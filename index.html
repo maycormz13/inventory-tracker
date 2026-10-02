@@ -30,6 +30,7 @@ form label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;ga
 </style></head><body>
 <header><h1>📦 Inventory Control Tracker <span class="note" id="stamp"></span></h1><nav id="nav"></nav></header>
 <main id="app">Loading…</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 const ROOT=["Shipping Error","Receiving Error","Production Error","Scanning Error","Labeling Error","FIFO Violation","Location Error","Damage/Loss","System Error","Other","Unresolved"],
 IST=["Open","Investigating","Awaiting Approval","Approved","Adjusted","Closed"],PRI=["Critical","High","Medium","Low"],
@@ -76,11 +77,11 @@ function form(k){
 function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()}
 function csv(k){const s=S[k];const h=s.c.map(c=>c[1]);const e=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
  return [h.map(e).join(',')].concat(rows(k).map(r=>s.c.map(c=>e(r[c[0]])).join(','))).join('\n')}
+const tg=m=>(DATA.settings||[]).find(s=>s.metric===m)?.target??1;
 function dash(){
  const I=rows('investigations'),A=rows('actions'),C=rows('counts'),K=rows('kpis');
  const open=I.filter(r=>r.status&&r.status!=='Closed');
  const cc=C.filter(r=>r.required>0).map(r=>r.completed/r.required);
- const tg=m=>(DATA.settings||[]).find(s=>s.metric===m)?.target??1;
  const card=(v,l)=>`<div class="card"><b>${v}</b><span>${l}</span></div>`;
  const money=open.reduce((a,r)=>a+(+r.variance||0),0);
  const kp=[['Inventory Accuracy','invAcc'],['Location Accuracy','locAcc'],['Count Completion','countComp'],['FIFO Compliance','fifo'],['Investigation Completion','invComp']].map(([m,f])=>{
@@ -91,28 +92,101 @@ function dash(){
  const ro=rows('rollout').map(r=>`<tr><td>${esc(r.facility)}</td><td>${cell(r.status,'','status')}</td><td>${esc(r.approval)}</td><td>${esc(r.notes)}</td></tr>`).join('');
  return `<div class="cards">${card(open.length,'Open Investigations')}${card(A.filter(r=>r.target&&r.target<today&&r.status!=='Closed').length,'Overdue Actions')}${card(A.filter(r=>r.status&&r.status!=='Closed').length,'Open Corrective Actions')}${card(money.toLocaleString('en-US',{style:'currency',currency:'USD'}),'Adjustment $ (Open)')}${card(cc.length?(cc.reduce((a,b)=>a+b,0)/cc.length*100).toFixed(1)+'%':'0.0%','Count Completion Avg')}</div>
  <h2>KPIs vs Target</h2><div class="wrap"><table><tr><th>Metric</th><th>Target</th><th>Latest Actual</th><th>Status</th></tr>${kp}</table></div>
- <h2>Open Investigations by Root Cause</h2><div class="wrap"><table><tr><th>Root Cause</th><th>Open</th><th></th></tr>${rc}</table></div>
+ <h2>KPI Trend (average of all facilities)</h2><div class="card">${trend()}</div><h2>Open Investigations by Age</h2>${aging()}<h2>Open Investigations by Root Cause</h2><div class="wrap"><table><tr><th>Root Cause</th><th>Open</th><th></th></tr>${rc}</table></div>
  <h2>Facility Rollout</h2><div class="wrap"><table><tr><th>Facility</th><th>Status</th><th>Go-Live Approval</th><th>Notes</th></tr>${ro||'<tr><td colspan="4" class="note">No facilities yet.</td></tr>'}</table></div>`}
+
+/* ---------- import (Excel / CSV) ---------- */
+const KEYS={investigations:'investigations',actions:'actions',counts:'countcompletion',kpis:'monthlykpi',rollout:'rolloutstatus'};
+const norm=s=>String(s??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const p2=n=>String(n).padStart(2,'0'),ymd=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+function conv(v,t,n){
+ if(v instanceof Date)return n==='month'?ymd(v).slice(0,7):ymd(v);
+ if(v==null||v==='')return t==='chk'?false:'';
+ if(t==='chk')return v===true||/^(☑|true|yes|y|1|x)$/i.test(String(v).trim());
+ if(['num','int','pct'].includes(t)){let x=typeof v==='number'?v:parseFloat(String(v).replace(/[$,%\s]/g,''));if(isNaN(x))return'';if(t==='pct'&&(/%/.test(String(v))||x>1))x/=100;return x}
+ v=String(v).trim();
+ if((t==='date'||n==='month')&&!/^\d{4}-\d{2}/.test(v)){const d=new Date(v);if(!isNaN(d))return n==='month'?ymd(d).slice(0,7):ymd(d)}
+ return v}
+function parseSheet(ws,k){
+ const A=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});
+ const cols=S[k].c.map(([n,l,t])=>({n,t,key:norm(l.replace(/\(.*?\)|[%$]/g,''))}));
+ for(let i=0;i<Math.min(A.length,15);i++){
+  const m={};A[i].forEach((hd,j)=>{const x=norm(hd);if(!x)return;const c=cols.find(c=>!(c.n in m)&&(x===c.key||x.startsWith(c.key)||(c.n==='evidence'&&x.includes('evidence'))));if(c)m[c.n]=j});
+  if(Object.keys(m).length<2)continue;
+  const out=[];
+  for(const r of A.slice(i+1)){const o={};cols.forEach(c=>o[c.n]=c.n in m?conv(r[m[c.n]],c.t,c.n):(c.t==='chk'?false:''));
+   if(Object.values(o).some(v=>v!==''&&v!==false))out.push(o)}
+  return out}
+ return[]}
+function findWs(wb,k,strict){
+ if(!strict&&wb.SheetNames.length===1)return wb.Sheets[wb.SheetNames[0]];
+ const n=wb.SheetNames.find(s=>norm(s).includes(KEYS[k]));return n?wb.Sheets[n]:null}
+async function doImport(files,keys,strict){
+ if(!window.XLSX){alert('Import library did not load. Check your internet connection and refresh.');return}
+ const rep=[];
+ for(const f of files){
+  const ext=f.name.split('.').pop().toLowerCase();
+  if(['pdf','png','jpg','jpeg','docx','doc','txt'].includes(ext)){rep.push(f.name+': this file type needs OCR/AI and is not supported yet');continue}
+  try{
+   const wb=['csv','tsv'].includes(ext)?XLSX.read(await f.text(),{type:'string',cellDates:true}):XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});
+   for(const k of keys){const ws=findWs(wb,k,strict);if(!ws)continue;
+    const sig=r=>S[k].c.map(c=>r[c[0]]).join('|'),have=new Set(rows(k).map(sig));
+    const r=parseSheet(ws,k).filter(x=>!have.has(sig(x)));
+    if(r.length){(DRAFT[k]=DRAFT[k]||[]).push(...r);rep.push(S[k].t+': '+r.length+' new')}}
+  }catch(e){rep.push(f.name+': could not read ('+e.message+')')}}
+ saveD();render();
+ alert(rep.length?rep.join('\n')+'\n\nImported rows are drafts (blue). Use "Export all data (JSON)" and commit it to GitHub to make them permanent.':'No new matching rows found. The first row of your data needs column names like the table headers.')}
+/* ---------- charts & weekly report ---------- */
+function trend(){
+ const K=rows('kpis').filter(r=>r.month),ms=[...new Set(K.map(r=>r.month))].sort();
+ if(ms.length<2)return'<span class="note">Add at least 2 months of KPI data to see the trend.</span>';
+ const F=[['invAcc','Inventory Accuracy','#1f6feb'],['locAcc','Location Accuracy','#1a7f37'],['countComp','Count Completion','#9a6700'],['fifo','FIFO Compliance','#8250df'],['invComp','Investigation Completion','#cf222e']];
+ const av=(m,f)=>{const v=K.filter(r=>r.month===m&&r[f]!==''&&r[f]!=null).map(r=>+r[f]);return v.length?v.reduce((a,b)=>a+b)/v.length:null};
+ const all=F.flatMap(([f])=>ms.map(m=>av(m,f))).filter(v=>v!=null),lo=Math.max(0,Math.floor(Math.min(...all,.97)*50)/50);
+ const W=640,H=250,p=44,x=i=>p+i*(W-2*p)/(ms.length-1),y=v=>H-p-(v-lo)/(1-lo)*(H-2*p);
+ let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:780px" role="img" aria-label="KPI trend">`;
+ [lo,(lo+1)/2,1].forEach(v=>s+=`<line x1="${p}" x2="${W-p}" y1="${y(v)}" y2="${y(v)}" stroke="currentColor" opacity=".15"/><text x="${p-6}" y="${y(v)+4}" font-size="11" text-anchor="end" fill="currentColor">${(v*100).toFixed(0)}%</text>`);
+ const t=tg('Inventory Accuracy');if(t>=lo&&t<=1)s+=`<line x1="${p}" x2="${W-p}" y1="${y(t)}" y2="${y(t)}" stroke="#1f6feb" stroke-dasharray="5 4" opacity=".6"/>`;
+ ms.forEach((m,i)=>s+=`<text x="${x(i)}" y="${H-p+18}" font-size="11" text-anchor="middle" fill="currentColor">${esc(m)}</text>`);
+ F.forEach(([f,,c])=>{const pts=ms.map((m,i)=>[x(i),av(m,f)]).filter(a=>a[1]!=null);
+  s+=`<polyline fill="none" stroke="${c}" stroke-width="2.5" points="${pts.map(a=>a[0]+','+y(a[1])).join(' ')}"/>`+pts.map(a=>`<circle cx="${a[0]}" cy="${y(a[1])}" r="3.5" fill="${c}"/>`).join('')});
+ return s+'</svg><div class="note">'+F.map(([,l,c])=>`<span style="color:${c}">●</span> ${l}`).join(' &nbsp; ')+' &nbsp; <span style="color:#1f6feb">- - -</span> Inventory Accuracy target</div>'}
+function aging(){
+ const o=rows('investigations').filter(r=>r.status&&r.status!=='Closed'&&r.date);
+ const B=[['0–7 days',0,7],['8–14 days',8,14],['15–30 days',15,30],['Over 30 days',31,1e9]];
+ return'<div class="wrap"><table><tr><th>Age</th><th>Open</th><th>Variance $</th></tr>'+B.map(([l,a,b])=>{const g=o.filter(r=>{const d=days(r.date,today);return d>=a&&d<=b});
+  return`<tr><td>${l}</td><td>${g.length}</td><td>${g.reduce((s,r)=>s+(+r.variance||0),0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td></tr>`}).join('')+'</table></div>'}
+function weekly(){
+ const wk=new Date(Date.now()-7*864e5).toISOString().slice(0,10),I=rows('investigations'),A=rows('actions'),ap=S.investigations.calc[0][1];
+ const L=(t,a,h,f)=>`<h2>${t} (${a.length})</h2>`+(a.length?`<div class="wrap"><table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${a.map(r=>`<tr>${f(r).map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table></div>`:'<p class="note">None</p>');
+ return`<div class="tools"><button class="act pri" onclick="window.print()">🖨 Print / Save as PDF</button></div><h2 style="margin-top:0">Weekly Leadership Report — week ending ${today}</h2>`+dash()
+ +L('Overdue Corrective Actions',A.filter(r=>r.target&&r.target<today&&r.status!=='Closed'),['Facility','Issue','Owner','Priority','Target Date'],r=>[r.facility,r.issue,r.owner,r.priority,r.target])
+ +L('Investigations Awaiting Approval',I.filter(r=>r.status==='Awaiting Approval'),['Facility','Item / SKU','Variance $','Approver','Owner'],r=>[r.facility,r.sku,r.variance,ap(r),r.owner])
+ +L('Opened in the Last 7 Days',I.filter(r=>r.date>=wk),['Date','Facility','Item / SKU','Root Cause','Status'],r=>[r.date,r.facility,r.sku,r.rootCause,r.status])
+ +L('Closed in the Last 7 Days',I.filter(r=>r.status==='Closed'&&r.closed>=wk),['Closed','Facility','Item / SKU','Root Cause','Owner'],r=>[r.closed,r.facility,r.sku,r.rootCause,r.owner])}
 const STEPS=[['Team completes the existing daily/weekly/audit/investigation forms.','Warehouse / Inventory Team','Every shift','Detailed forms remain the source evidence.'],['Supervisor enters only the summary lines here.','Supervisor / Inventory Lead','Daily / end of shift','One leadership view without replacing detailed forms.'],['Open items automatically appear in Dashboard counts.','This site','Automatic','Leadership sees risk immediately.'],['Supervisor updates the item until it is Closed.','Owner / Supervisor','As work is completed','Preserves a digital management trail.'],['Manager reviews Dashboard and Actions weekly.','Warehouse Manager / Operations','Weekly','Prevents aging issues.'],['Leadership uses Monthly Review before approving continued rollout.','Operations Leadership','Monthly','Confirms the process works before expansion.']];
 function render(q=''){
  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
  const app=document.getElementById('app');let h='';
- if(tab==='dashboard')h=dash();
+ if(tab==='dashboard')h=`<div class="tools"><label class="act pri" style="cursor:pointer">⬆ Import full Excel tracker<input type="file" id="impall" accept=".xlsx,.xlsm,.xls,.ods" hidden></label><span class="note">Loads every matching tab of your Master Tracker as drafts.</span></div>`+dash();
+ else if(tab==='weekly')h=weekly();
  else if(tab==='settings')h=`<h2>Settings & Targets</h2><div class="wrap"><table><tr><th>Metric</th><th>Target</th><th>Unit</th><th>Owner</th></tr>${(DATA.settings||[]).map(s=>`<tr><td>${esc(s.metric)}</td><td>${s.unit==='%'?pct(s.target):s.target}</td><td>${esc(s.unit)}</td><td>${esc(s.owner)}</td></tr>`).join('')}</table></div><p class="note">Targets change only by editing data/data.json in GitHub (the change history is your approval trail).</p>`;
  else if(tab==='start')h=`<h2>Start Here</h2><div class="wrap"><table><tr><th>Step</th><th>What You Do</th><th>Who</th><th>When</th><th>Why</th></tr>${STEPS.map((s,i)=>`<tr><td>${i+1}</td>${s.map(v=>`<td style="white-space:normal">${v}</td>`).join('')}</tr>`).join('')}</table></div>`;
  else h=`<h2>${S[tab].t}</h2><details><summary class="act" style="cursor:pointer">➕ Add a record (saved in this browser as a draft)</summary>${form(tab)}</details>
-  <div class="tools"><input id="q" placeholder="Search…" value="${esc(q)}"><button class="act" id="ecsv">Download CSV</button><button class="act" id="ejson">Export all data (JSON)</button><button class="act" id="clr">Clear my drafts</button></div>
+  <div class="tools"><input id="q" placeholder="Search…" value="${esc(q)}"><label class="act" style="cursor:pointer">⬆ Import Excel / CSV<input type="file" id="imp" accept=".xlsx,.xlsm,.xls,.ods,.csv,.tsv" hidden></label><button class="act" id="ecsv">Download CSV</button><button class="act" id="ejson">Export all data (JSON)</button><button class="act" id="clr">Clear my drafts</button></div>
   <p class="note">Blue rows are drafts stored only in this browser. Export JSON and commit it to GitHub to make them permanent.</p><div id="t">${tbl(tab,q)}</div>`;
  app.innerHTML=h;
+ const ia=document.getElementById('impall');if(ia)ia.onchange=e=>doImport([...e.target.files],Object.keys(KEYS),true);
  const f=document.getElementById('f');
  if(f){f.onsubmit=e=>{e.preventDefault();const o={};let any=0;S[tab].c.forEach(([n,,t])=>{const el=f.elements[n];let v=t==='chk'?el.checked:el.value;
    if(['num','int','pct'].includes(t)){v=v===''?'':parseFloat(v);if(t==='pct'&&v!=='')v=v/100}if(v!==''&&v!==false)any=1;o[n]=v});
    if(!any)return;(DRAFT[tab]=DRAFT[tab]||[]).push(o);saveD();render()};
   document.getElementById('q').oninput=e=>{document.getElementById('t').innerHTML=tbl(tab,e.target.value)};
+  document.getElementById('imp').onchange=e=>doImport([...e.target.files],[tab],false);
   document.getElementById('ecsv').onclick=()=>dl(tab+'.csv',csv(tab),'text/csv');
   document.getElementById('ejson').onclick=()=>{const out={};Object.keys(S).forEach(k=>out[k]=rows(k).map(({_d,...r})=>r));out.settings=DATA.settings;dl('data.json',JSON.stringify(out,null,2),'application/json')};
   document.getElementById('clr').onclick=()=>{if(confirm('Delete all unsaved drafts in this browser?')){DRAFT={};saveD();render()}}}}
-const TABS=[['dashboard','Dashboard'],['investigations','Investigations'],['actions','Actions'],['counts','Counts'],['kpis','Monthly KPI'],['rollout','Rollout'],['settings','Settings'],['start','Start Here']];
+const TABS=[['dashboard','Dashboard'],['investigations','Investigations'],['actions','Actions'],['counts','Counts'],['kpis','Monthly KPI'],['rollout','Rollout'],['weekly','Weekly Report'],['settings','Settings'],['start','Start Here']];
 document.getElementById('nav').innerHTML=TABS.map(([k,l])=>`<button data-t="${k}">${l}</button>`).join('');
 document.getElementById('nav').onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;location.hash=tab;render()}};
 fetch('data/data.json',{cache:'no-store'}).then(r=>r.json()).then(d=>{DATA=d;
