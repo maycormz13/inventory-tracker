@@ -1,0 +1,287 @@
+{
+  "updated": "2026-10-01",
+  "investigations": [
+    {
+      "date": "2026-09-08",
+      "facility": "Plant A",
+      "area": "Freezer",
+      "location": "F-12-03",
+      "sku": "CHK-4410",
+      "variance": -1840,
+      "rootCause": "Receiving Error",
+      "action": "Retrain receiving team on pallet scan",
+      "owner": "J. Alvarez",
+      "status": "Investigating",
+      "due": "2026-09-22",
+      "closed": "",
+      "evidence": ""
+    },
+    {
+      "date": "2026-09-11",
+      "facility": "Plant A",
+      "area": "Combo",
+      "location": "C-04-01",
+      "sku": "BEEF-220",
+      "variance": 420,
+      "rootCause": "Scanning Error",
+      "action": "Replace faulty scanner",
+      "owner": "M. Chen",
+      "status": "Closed",
+      "due": "2026-09-18",
+      "closed": "2026-09-16",
+      "evidence": "https://example.com/evidence/1"
+    },
+    {
+      "date": "2026-09-15",
+      "facility": "Plant B",
+      "area": "Fresh",
+      "location": "FR-02-08",
+      "sku": "PORK-118",
+      "variance": -5200,
+      "rootCause": "FIFO Violation",
+      "action": "Add FIFO check to shipping SOP",
+      "owner": "T. Brooks",
+      "status": "Awaiting Approval",
+      "due": "2026-09-29",
+      "closed": "",
+      "evidence": ""
+    },
+    {
+      "date": "2026-09-20",
+      "facility": "Plant B",
+      "area": "Frozen",
+      "location": "FZ-09-02",
+      "sku": "CHK-4412",
+      "variance": -12750,
+      "rootCause": "Damage/Loss",
+      "action": "Review forklift incident report",
+      "owner": "T. Brooks",
+      "status": "Open",
+      "due": "2026-10-10",
+      "closed": "",
+      "evidence": ""
+    },
+    {
+      "date": "2026-09-24",
+      "facility": "Plant A",
+      "area": "WIP",
+      "location": "W-01-05",
+      "sku": "MIX-009",
+      "variance": 95,
+      "rootCause": "Labeling Error",
+      "action": "Fix label template",
+      "owner": "J. Alvarez",
+      "status": "Adjusted",
+      "due": "2026-10-01",
+      "closed": "",
+      "evidence": ""
+    }
+  ],
+  "actions": [
+    {
+      "date": "2026-09-08",
+      "facility": "Plant A",
+      "issue": "Receiving scan skips",
+      "rootCause": "Training gap",
+      "action": "Retraining + spot audits",
+      "owner": "J. Alvarez",
+      "priority": "High",
+      "target": "2026-09-22",
+      "status": "In Progress",
+      "closed": "",
+      "evidence": "",
+      "verified": false
+    },
+    {
+      "date": "2026-09-12",
+      "facility": "Plant B",
+      "issue": "FIFO breaks at dock 3",
+      "rootCause": "No visual cue",
+      "action": "Install dock FIFO signage",
+      "owner": "T. Brooks",
+      "priority": "Critical",
+      "target": "2026-09-26",
+      "status": "Open",
+      "closed": "",
+      "evidence": "",
+      "verified": false
+    },
+    {
+      "date": "2026-09-01",
+      "facility": "Plant A",
+      "issue": "Scanner battery failures",
+      "rootCause": "Old hardware",
+      "action": "Replace 6 scanners",
+      "owner": "M. Chen",
+      "priority": "Medium",
+      "target": "2026-09-15",
+      "status": "Closed",
+      "closed": "2026-09-14",
+      "evidence": "",
+      "verified": true
+    }
+  ],
+  "counts": [
+    {
+      "date": "2026-09-22",
+      "facility": "Plant A",
+      "area": "Freezer",
+      "required": 120,
+      "completed": 120,
+      "variances": 3,
+      "invs": 1,
+      "owner": "J. Alvarez",
+      "verified": true,
+      "evidence": ""
+    },
+    {
+      "date": "2026-09-23",
+      "facility": "Plant A",
+      "area": "Combo",
+      "required": 80,
+      "completed": 76,
+      "variances": 2,
+      "invs": 1,
+      "owner": "M. Chen",
+      "verified": true,
+      "evidence": ""
+    },
+    {
+      "date": "2026-09-24",
+      "facility": "Plant B",
+      "area": "Fresh",
+      "required": 95,
+      "completed": 95,
+      "variances": 1,
+      "invs": 0,
+      "owner": "T. Brooks",
+      "verified": true,
+      "evidence": ""
+    },
+    {
+      "date": "2026-09-25",
+      "facility": "Plant B",
+      "area": "Frozen",
+      "required": 140,
+      "completed": 126,
+      "variances": 6,
+      "invs": 2,
+      "owner": "T. Brooks",
+      "verified": true,
+      "evidence": ""
+    }
+  ],
+  "kpis": [
+    {
+      "month": "2026-07",
+      "facility": "Plant A",
+      "invAcc": 0.981,
+      "locAcc": 0.985,
+      "countComp": 0.96,
+      "fifo": 0.97,
+      "invComp": 0.9,
+      "verifiedBy": "Ops Manager",
+      "evidence": ""
+    },
+    {
+      "month": "2026-08",
+      "facility": "Plant A",
+      "invAcc": 0.987,
+      "locAcc": 0.99,
+      "countComp": 0.98,
+      "fifo": 0.99,
+      "invComp": 0.95,
+      "verifiedBy": "Ops Manager",
+      "evidence": ""
+    },
+    {
+      "month": "2026-09",
+      "facility": "Plant A",
+      "invAcc": 0.992,
+      "locAcc": 0.991,
+      "countComp": 0.99,
+      "fifo": 1.0,
+      "invComp": 1.0,
+      "verifiedBy": "Ops Manager",
+      "evidence": ""
+    }
+  ],
+  "rollout": [
+    {
+      "facility": "Plant A",
+      "sponsor": "VP Operations",
+      "manager": "S. Patel",
+      "owner": "J. Alvarez",
+      "training": true,
+      "baseline": true,
+      "pilotStart": "2026-07-01",
+      "pilotEnd": "2026-09-30",
+      "approval": "Approved 2026-10-01",
+      "status": "Live",
+      "notes": "Pilot met targets."
+    },
+    {
+      "facility": "Plant B",
+      "sponsor": "VP Operations",
+      "manager": "R. Kim",
+      "owner": "T. Brooks",
+      "training": true,
+      "baseline": false,
+      "pilotStart": "2026-09-01",
+      "pilotEnd": "",
+      "approval": "",
+      "status": "Pilot",
+      "notes": "Baseline count pending."
+    }
+  ],
+  "settings": [
+    {
+      "metric": "Inventory Accuracy",
+      "target": 0.99,
+      "unit": "%",
+      "owner": "Inventory Supervisor"
+    },
+    {
+      "metric": "Location Accuracy",
+      "target": 0.99,
+      "unit": "%",
+      "owner": "Inventory Supervisor"
+    },
+    {
+      "metric": "Count Completion",
+      "target": 1,
+      "unit": "%",
+      "owner": "Warehouse Manager"
+    },
+    {
+      "metric": "FIFO Compliance",
+      "target": 1,
+      "unit": "%",
+      "owner": "Shipping / Warehouse"
+    },
+    {
+      "metric": "Investigation Completion",
+      "target": 1,
+      "unit": "%",
+      "owner": "Inventory Supervisor"
+    },
+    {
+      "metric": "Daily Combo Verification",
+      "target": 1,
+      "unit": "%",
+      "owner": "Shift Supervisor"
+    },
+    {
+      "metric": "Freezer Cycle Count Window",
+      "target": 30,
+      "unit": "Days",
+      "owner": "Inventory Supervisor"
+    },
+    {
+      "metric": "WMS Restoration Entry Limit",
+      "target": 4,
+      "unit": "Hours",
+      "owner": "Inventory Supervisor"
+    }
+  ]
+}
