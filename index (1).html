@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inventory Control Tracker</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1b1f24;--mut:#667085;--card:#fff;--bd:#d8dce2;--ac:#1f6feb;--ok:#1a7f37;--bad:#cf222e;--warn:#9a6700}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1318;--fg:#e6e9ed;--mut:#98a2b3;--card:#171c23;--bd:#2c333d;--ac:#58a6ff;--ok:#3fb950;--bad:#f85149;--warn:#d29922}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--fg)}
+header{background:var(--card);border-bottom:1px solid var(--bd);padding:12px 16px;position:sticky;top:0;z-index:5}
+h1{font-size:18px;margin:0 0 8px}h2{font-size:16px;margin:22px 0 8px}
+nav{display:flex;gap:6px;flex-wrap:wrap}nav button{border:1px solid var(--bd);background:none;color:var(--fg);padding:6px 12px;border-radius:6px;cursor:pointer}
+nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{padding:16px;max-width:1300px;margin:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}
+.card b{display:block;font-size:26px}.card span{color:var(--mut);font-size:13px}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--bd);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:7px 10px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+th{background:var(--bg);position:sticky;top:0}tr.draft td{background:rgba(31,111,235,.08)}
+.badge{padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--bd)}
+.ok{color:var(--ok);border-color:var(--ok)}.bad{color:var(--bad);border-color:var(--bad)}.warn{color:var(--warn);border-color:var(--warn)}
+.bar{background:var(--bd);border-radius:4px;height:10px;min-width:120px}.bar i{display:block;height:10px;background:var(--ac);border-radius:4px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+input,select,button.act{font:inherit;padding:6px 9px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}
+button.act{cursor:pointer}button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:10px 0}
+form label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:3px}
+.note{color:var(--mut);font-size:13px}a{color:var(--ac)}
+@media print{header nav,.tools,form{display:none}body{background:#fff}}
+</style></head><body>
+<header><h1>📦 Inventory Control Tracker <span class="note" id="stamp"></span></h1><nav id="nav"></nav></header>
+<main id="app">Loading…</main>
+<script>
+const ROOT=["Shipping Error","Receiving Error","Production Error","Scanning Error","Labeling Error","FIFO Violation","Location Error","Damage/Loss","System Error","Other","Unresolved"],
+IST=["Open","Investigating","Awaiting Approval","Approved","Adjusted","Closed"],PRI=["Critical","High","Medium","Low"],
+AST=["Open","In Progress","Waiting","Closed"],AREA=["Combo","WIP","Freezer","Fresh","Frozen","Other"],
+RST=["Not Started","Preparing","Training","Pilot","Pending Approval","Live","On Hold"];
+const days=(a,b)=>a&&b?Math.round((new Date(b)-new Date(a))/864e5):'';
+const today=new Date().toISOString().slice(0,10);
+const S={
+investigations:{t:'Investigations',idp:'INV',df:'date',c:[['date','Date Opened','date'],['facility','Facility'],['area','Area'],['location','Location'],['sku','Item / SKU'],['variance','Variance $','num'],['rootCause','Root Cause','sel',ROOT],['action','Corrective Action'],['owner','Owner'],['status','Status','sel',IST],['due','Due Date','date'],['closed','Closed Date','date'],['evidence','Evidence Link']],
+ calc:[['Approval Required',r=>{const v=r.variance;if(v===''||v==null)return'';const a=Math.abs(v);return a<=500?'Inventory Supervisor':a<=2500?'Warehouse Manager':a<=1e4?'Operations Manager':'VP of Operations'}],['Days Open',r=>r.date?days(r.date,r.status==='Closed'?r.closed:today):'']]},
+actions:{t:'Corrective Actions',idp:'ACT',df:'date',c:[['date','Date Opened','date'],['facility','Facility'],['issue','Issue'],['rootCause','Root Cause'],['action','Corrective Action'],['owner','Owner'],['priority','Priority','sel',PRI],['target','Target Date','date'],['status','Status','sel',AST],['closed','Closed Date','date'],['evidence','Evidence Link'],['verified','Leadership Verified','chk']],
+ calc:[['Days Open',r=>r.date?days(r.date,r.status==='Closed'?r.closed:today):'']]},
+counts:{t:'Count Completion',c:[['date','Date','date'],['facility','Facility'],['area','Area','sel',AREA],['required','Locations Required','int'],['completed','Locations Completed','int'],['variances','Variances Found','int'],['invs','Investigations Opened','int'],['owner','Count Owner'],['verified','Supervisor Verified','chk'],['evidence','Evidence Link']],
+ calc:[['Completion %',r=>r.required>0?(r.completed/r.required*100).toFixed(1)+'%':'']]},
+kpis:{t:'Monthly KPI',c:[['month','Month (YYYY-MM)'],['facility','Facility'],['invAcc','Inventory Accuracy %','pct'],['locAcc','Location Accuracy %','pct'],['countComp','Count Completion %','pct'],['fifo','FIFO Compliance %','pct'],['invComp','Investigation Completion %','pct'],['verifiedBy','Verified By'],['evidence','Evidence Link']]},
+rollout:{t:'Rollout Status',c:[['facility','Facility'],['sponsor','Executive Sponsor'],['manager','Warehouse Manager'],['owner','Inventory Owner'],['training','Training Complete','chk'],['baseline','Baseline Complete','chk'],['pilotStart','Pilot Start','date'],['pilotEnd','Pilot End','date'],['approval','Go-Live Approval'],['status','Status','sel',RST],['notes','Approver Notes']]}};
+let DATA={},DRAFT={},tab='dashboard';
+try{DRAFT=JSON.parse(localStorage.getItem('draft')||'{}')}catch(e){}
+const saveD=()=>{try{localStorage.setItem('draft',JSON.stringify(DRAFT))}catch(e){}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rows=k=>[...(DATA[k]||[]).map(r=>({...r})),...(DRAFT[k]||[]).map(r=>({...r,_d:1}))];
+const pct=v=>v===''||v==null?'':(v*100).toFixed(1)+'%';
+function cell(v,t,key){
+ if(t==='pct')return pct(v);if(t==='chk')return v?'☑':'☐';
+ if(t==='num')return v===''||v==null?'':Number(v).toLocaleString('en-US',{style:'currency',currency:'USD'});
+ if(key==='status'||key==='priority'){const g=['Closed','Live'].includes(v)?'ok':['Critical','On Hold'].includes(v)?'bad':v?'warn':'';return v?`<span class="badge ${g}">${esc(v)}</span>`:''}
+ if(key==='evidence'&&/^https?:\/\//.test(v||''))return `<a href="${esc(v)}" target="_blank" rel="noopener">link</a>`;
+ return esc(v)}
+function tbl(k,q=''){
+ const s=S[k],r=rows(k);
+ const hd=(s.idp?['ID']:[]).concat(s.c.map(c=>c[1]),(s.calc||[]).map(c=>c[0]));
+ const body=r.map((x,i)=>{
+  const id=s.idp&&x[s.df]?`${s.idp}-${x[s.df].replace(/-/g,'')}-${String(i+1).padStart(3,'0')}`:'';
+  const cs=(s.idp?[esc(id)]:[]).concat(s.c.map(c=>cell(x[c[0]],c[2],c[0])),(s.calc||[]).map(c=>esc(c[1](x))));
+  return {t:cs.join(' ').toLowerCase().replace(/<[^>]+>/g,''),h:`<tr class="${x._d?'draft':''}">${cs.map(v=>`<td>${v}</td>`).join('')}</tr>`}});
+ const shown=body.filter(b=>b.t.includes(q.toLowerCase()));
+ return `<div class="wrap"><table><thead><tr>${hd.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${shown.map(b=>b.h).join('')||`<tr><td colspan="${hd.length}" class="note">No records yet.</td></tr>`}</tbody></table></div>`}
+function form(k){
+ return `<form id="f">${S[k].c.map(([n,l,t,o])=>{
+  const inp=t==='sel'?`<select name="${n}"><option></option>${o.map(v=>`<option>${esc(v)}</option>`).join('')}</select>`
+  :t==='chk'?`<input type="checkbox" name="${n}">`
+  :`<input name="${n}" type="${t==='date'?'date':['num','pct','int'].includes(t)?'number':'text'}" ${t==='num'||t==='pct'?'step="0.01"':''}>`;
+  return `<label>${esc(l)}${inp}</label>`}).join('')}<button class="act pri" style="align-self:end">Add record</button></form>`}
+function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()}
+function csv(k){const s=S[k];const h=s.c.map(c=>c[1]);const e=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+ return [h.map(e).join(',')].concat(rows(k).map(r=>s.c.map(c=>e(r[c[0]])).join(','))).join('\n')}
+function dash(){
+ const I=rows('investigations'),A=rows('actions'),C=rows('counts'),K=rows('kpis');
+ const open=I.filter(r=>r.status&&r.status!=='Closed');
+ const cc=C.filter(r=>r.required>0).map(r=>r.completed/r.required);
+ const tg=m=>(DATA.settings||[]).find(s=>s.metric===m)?.target??1;
+ const card=(v,l)=>`<div class="card"><b>${v}</b><span>${l}</span></div>`;
+ const money=open.reduce((a,r)=>a+(+r.variance||0),0);
+ const kp=[['Inventory Accuracy','invAcc'],['Location Accuracy','locAcc'],['Count Completion','countComp'],['FIFO Compliance','fifo'],['Investigation Completion','invComp']].map(([m,f])=>{
+  const l=[...K].reverse().find(r=>r[f]!==''&&r[f]!=null);const a=l?l[f]:'';const t=tg(m);
+  return `<tr><td>${m}</td><td>${pct(t)}</td><td>${pct(a)}</td><td>${a===''?'':`<span class="badge ${a>=t?'ok':'bad'}">${a>=t?'ON TARGET':'BELOW TARGET'}</span>`}</td></tr>`}).join('');
+ const mx=Math.max(1,...ROOT.map(r=>open.filter(x=>x.rootCause===r).length));
+ const rc=ROOT.slice(0,10).map(r=>{const n=open.filter(x=>x.rootCause===r).length;return `<tr><td>${r}</td><td>${n}</td><td><div class="bar"><i style="width:${n/mx*100}%"></i></div></td></tr>`}).join('');
+ const ro=rows('rollout').map(r=>`<tr><td>${esc(r.facility)}</td><td>${cell(r.status,'','status')}</td><td>${esc(r.approval)}</td><td>${esc(r.notes)}</td></tr>`).join('');
+ return `<div class="cards">${card(open.length,'Open Investigations')}${card(A.filter(r=>r.target&&r.target<today&&r.status!=='Closed').length,'Overdue Actions')}${card(A.filter(r=>r.status&&r.status!=='Closed').length,'Open Corrective Actions')}${card(money.toLocaleString('en-US',{style:'currency',currency:'USD'}),'Adjustment $ (Open)')}${card(cc.length?(cc.reduce((a,b)=>a+b,0)/cc.length*100).toFixed(1)+'%':'0.0%','Count Completion Avg')}</div>
+ <h2>KPIs vs Target</h2><div class="wrap"><table><tr><th>Metric</th><th>Target</th><th>Latest Actual</th><th>Status</th></tr>${kp}</table></div>
+ <h2>Open Investigations by Root Cause</h2><div class="wrap"><table><tr><th>Root Cause</th><th>Open</th><th></th></tr>${rc}</table></div>
+ <h2>Facility Rollout</h2><div class="wrap"><table><tr><th>Facility</th><th>Status</th><th>Go-Live Approval</th><th>Notes</th></tr>${ro||'<tr><td colspan="4" class="note">No facilities yet.</td></tr>'}</table></div>`}
+const STEPS=[['Team completes the existing daily/weekly/audit/investigation forms.','Warehouse / Inventory Team','Every shift','Detailed forms remain the source evidence.'],['Supervisor enters only the summary lines here.','Supervisor / Inventory Lead','Daily / end of shift','One leadership view without replacing detailed forms.'],['Open items automatically appear in Dashboard counts.','This site','Automatic','Leadership sees risk immediately.'],['Supervisor updates the item until it is Closed.','Owner / Supervisor','As work is completed','Preserves a digital management trail.'],['Manager reviews Dashboard and Actions weekly.','Warehouse Manager / Operations','Weekly','Prevents aging issues.'],['Leadership uses Monthly Review before approving continued rollout.','Operations Leadership','Monthly','Confirms the process works before expansion.']];
+function render(q=''){
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+ const app=document.getElementById('app');let h='';
+ if(tab==='dashboard')h=dash();
+ else if(tab==='settings')h=`<h2>Settings & Targets</h2><div class="wrap"><table><tr><th>Metric</th><th>Target</th><th>Unit</th><th>Owner</th></tr>${(DATA.settings||[]).map(s=>`<tr><td>${esc(s.metric)}</td><td>${s.unit==='%'?pct(s.target):s.target}</td><td>${esc(s.unit)}</td><td>${esc(s.owner)}</td></tr>`).join('')}</table></div><p class="note">Targets change only by editing data/data.json in GitHub (the change history is your approval trail).</p>`;
+ else if(tab==='start')h=`<h2>Start Here</h2><div class="wrap"><table><tr><th>Step</th><th>What You Do</th><th>Who</th><th>When</th><th>Why</th></tr>${STEPS.map((s,i)=>`<tr><td>${i+1}</td>${s.map(v=>`<td style="white-space:normal">${v}</td>`).join('')}</tr>`).join('')}</table></div>`;
+ else h=`<h2>${S[tab].t}</h2><details><summary class="act" style="cursor:pointer">➕ Add a record (saved in this browser as a draft)</summary>${form(tab)}</details>
+  <div class="tools"><input id="q" placeholder="Search…" value="${esc(q)}"><button class="act" id="ecsv">Download CSV</button><button class="act" id="ejson">Export all data (JSON)</button><button class="act" id="clr">Clear my drafts</button></div>
+  <p class="note">Blue rows are drafts stored only in this browser. Export JSON and commit it to GitHub to make them permanent.</p><div id="t">${tbl(tab,q)}</div>`;
+ app.innerHTML=h;
+ const f=document.getElementById('f');
+ if(f){f.onsubmit=e=>{e.preventDefault();const o={};let any=0;S[tab].c.forEach(([n,,t])=>{const el=f.elements[n];let v=t==='chk'?el.checked:el.value;
+   if(['num','int','pct'].includes(t)){v=v===''?'':parseFloat(v);if(t==='pct'&&v!=='')v=v/100}if(v!==''&&v!==false)any=1;o[n]=v});
+   if(!any)return;(DRAFT[tab]=DRAFT[tab]||[]).push(o);saveD();render()};
+  document.getElementById('q').oninput=e=>{document.getElementById('t').innerHTML=tbl(tab,e.target.value)};
+  document.getElementById('ecsv').onclick=()=>dl(tab+'.csv',csv(tab),'text/csv');
+  document.getElementById('ejson').onclick=()=>{const out={};Object.keys(S).forEach(k=>out[k]=rows(k).map(({_d,...r})=>r));out.settings=DATA.settings;dl('data.json',JSON.stringify(out,null,2),'application/json')};
+  document.getElementById('clr').onclick=()=>{if(confirm('Delete all unsaved drafts in this browser?')){DRAFT={};saveD();render()}}}}
+const TABS=[['dashboard','Dashboard'],['investigations','Investigations'],['actions','Actions'],['counts','Counts'],['kpis','Monthly KPI'],['rollout','Rollout'],['settings','Settings'],['start','Start Here']];
+document.getElementById('nav').innerHTML=TABS.map(([k,l])=>`<button data-t="${k}">${l}</button>`).join('');
+document.getElementById('nav').onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;location.hash=tab;render()}};
+fetch('data/data.json',{cache:'no-store'}).then(r=>r.json()).then(d=>{DATA=d;
+ document.getElementById('stamp').textContent=d.updated?'· data as of '+d.updated:'';
+ const h=location.hash.slice(1);if(TABS.some(t=>t[0]===h))tab=h;render()})
+ .catch(()=>{document.getElementById('app').innerHTML='<p>Could not load data/data.json. If you opened index.html by double-clicking, use GitHub Pages or run <code>python -m http.server</code> in this folder.</p>'});
+</script></body></html>
